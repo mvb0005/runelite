@@ -1,0 +1,18 @@
+{
+  "varPlayer": 29,
+  "completed": 2,
+  "items": [
+    1972,
+    1933,
+    1944
+  ],
+  "states": [
+    {
+      "type": "npc",
+      "description": "Talk to the Chef to start the quest.",
+      "id": "4626",
+      "location": [3208, 3215],
+      "chatOptions": ["What's wrong?", "I'm always happy to help a cook in distress."]
+    }
+  ]
+}
