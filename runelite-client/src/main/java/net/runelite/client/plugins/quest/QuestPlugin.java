@@ -108,8 +108,33 @@ public class QuestPlugin extends Plugin {
             widget = null;
             chatOption = -1;
         }
-        log.debug("{}", QuestUtil.toFileName(event.getMenuTarget()));
 
+        if (event.getMenuOption().equalsIgnoreCase("guide:")){
+            log.debug("YAY");
+        }
+    }
+
+    @Subscribe
+    public void onMenuEntryAdded(MenuEntryAdded event){
+
+        if (client.getGameState() != GameState.LOGGED_IN)
+        {
+            return;
+        }
+
+        String option = Text.removeTags(event.getOption()).toLowerCase();
+        String target = Text.removeTags(event.getTarget()).toLowerCase();
+
+        if (option.equals("read journal:")){
+            ArrayList<MenuEntry> menuEntries = new ArrayList<>(Arrays.asList(client.getMenuEntries()));
+            MenuEntry m = new MenuEntry();
+            m.setOption("Guide:");
+            m.setTarget(event.getTarget());
+            m.setType(0);
+            menuEntries.add(1,m);
+            MenuEntry[] newMenuEntries = new MenuEntry[menuEntries.size()];
+            client.setMenuEntries(menuEntries.toArray(newMenuEntries));
+        }
     }
 
 
