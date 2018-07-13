@@ -17,26 +17,31 @@ public class QuestOverlay extends Overlay {
 
     private final Client client;
     private final QuestPlugin plugin;
+    private final QuestConfig config;
 
     @Inject
-    QuestOverlay(Client client, QuestPlugin plugin){
+    QuestOverlay(Client client, QuestPlugin plugin, QuestConfig config){
         this.client = client;
         this.plugin = plugin;
+        this.config = config;
         setLayer(OverlayLayer.ALWAYS_ON_TOP);
         setPosition(OverlayPosition.DYNAMIC);
     }
 
     @Override
     public Dimension render(Graphics2D graphics) {
-        if (plugin.chatOption >= 0 && plugin.widget != null && !plugin.widget.isHidden()){
+        if (config.drawWidgetOverlay() && plugin.chatOption >= 0 && plugin.widget != null && !plugin.widget.isHidden()){
             renderWidget(graphics);
         }
 
-        List<NPC> targets = plugin.getHighlightedTargets();
-        for (NPC npc: targets){
-            renderTargetOverlay(graphics, npc, plugin.getOverlayColor());
+        if (config.drawNPCOverlay()) {
+            List<NPC> targets = plugin.getHighlightedTargets();
+            if (targets != null) {
+                for (NPC npc : targets) {
+                    renderTargetOverlay(graphics, npc, config.getOverlayColor());
+                }
+            }
         }
-
         return null;
     }
 
@@ -55,10 +60,12 @@ public class QuestOverlay extends Overlay {
 
     private void renderWidget(Graphics2D graphics) {
         Rectangle bounds = plugin.widget.getBounds();
-        graphics.setColor(plugin.getOverlayColor());
+        graphics.setColor(config.getOverlayColor());
         graphics.draw(bounds);
         graphics.setFont(new Font(graphics.getFont().getFontName(), Font.PLAIN, 50));
         graphics.setColor(Color.BLACK);
         graphics.drawString(String.valueOf(plugin.chatOption), bounds.x + 10, bounds.y + bounds.height / 2);
     }
+
+
 }

@@ -6,8 +6,11 @@ import net.runelite.client.util.Text;
 import sun.misc.IOUtils;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
@@ -16,8 +19,10 @@ import java.util.List;
 class QuestUtil {
 
     class Quest {
+        String name;
         int varPlayer;
         int completed;
+        int[] items;
         State[] states;
 
         @Override
@@ -33,11 +38,24 @@ class QuestUtil {
         List<String> chatOptions;
     }
 
-    static Quest loadQuest() throws Exception{
+    static Quest loadQuest(String questFileName){
         Gson g = new Gson();
-        URI uri = QuestUtil.class.getResource("cooks-assistant.json").toURI();
-        String jsonFile = new String(Files.readAllBytes(Paths.get(uri)));
-        return g.fromJson(jsonFile, Quest.class);
+        URL resource = QuestUtil.class.getResource(questFileName);
+        if (resource == null){
+            return null;
+        }
+        URI uri = null;
+        try {
+            uri = resource.toURI();
+            String jsonFile = new String(Files.readAllBytes(Paths.get(uri)));
+            return g.fromJson(jsonFile, Quest.class);
+        } catch (URISyntaxException e) {
+            log.debug("Error creating URI");
+            return null;
+        } catch (IOException e) {
+            log.debug("Error Reading JSON File");
+            return null;
+        }
     }
 
     static String toFileName(String string){
