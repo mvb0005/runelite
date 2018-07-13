@@ -387,6 +387,11 @@ public class MenuEntrySwapperPlugin extends Plugin
 			{
 				swap("pay", option, target, true);
 			}
+
+			if (config.swapDecant())
+			{
+				swap("decant", option, target, true);
+			}
 		}
 		else if (config.swapTravel() && option.equals("pass") && target.equals("energy barrier"))
 		{
@@ -441,10 +446,6 @@ public class MenuEntrySwapperPlugin extends Plugin
 		else if (config.swapBoxTrap() && option.equals("take"))
 		{
 			swap("lay", option, target, true);
-		}
-		else if (config.swapCatacombEntrance() && option.equals("read"))
-		{
-			swap("investigate", option, target, true);
 		}
 		else if (config.swapChase() && option.equals("pick-up"))
 		{
