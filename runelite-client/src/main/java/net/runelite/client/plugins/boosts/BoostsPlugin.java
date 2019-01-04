@@ -25,16 +25,13 @@
 package net.runelite.client.plugins.boosts;
 
 import com.google.common.collect.ImmutableSet;
-import com.google.common.eventbus.Subscribe;
 import com.google.inject.Provides;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import javax.imageio.ImageIO;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Prayer;
 import net.runelite.api.Skill;
@@ -44,18 +41,19 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.Notifier;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.SkillIconManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
+import net.runelite.client.util.ImageUtil;
 
 @PluginDescriptor(
 	name = "Boosts Information",
 	description = "Show combat and/or skill boost information",
 	tags = {"combat", "notifications", "skilling", "overlay"}
 )
-@Slf4j
 @Singleton
 public class BoostsPlugin extends Plugin
 {
@@ -118,11 +116,8 @@ public class BoostsPlugin extends Plugin
 		Arrays.fill(lastSkillLevels, -1);
 
 		// Add infoboxes for everything at startup and then determine inside if it will be rendered
-		synchronized (ImageIO.class)
-		{
-			infoBoxManager.addInfoBox(new StatChangeIndicator(true, ImageIO.read(getClass().getResourceAsStream("debuffed.png")), this, config));
-			infoBoxManager.addInfoBox(new StatChangeIndicator(false, ImageIO.read(getClass().getResourceAsStream("buffed.png")), this, config));
-		}
+		infoBoxManager.addInfoBox(new StatChangeIndicator(true, ImageUtil.getResourceStreamFromClass(getClass(), "debuffed.png"), this, config));
+		infoBoxManager.addInfoBox(new StatChangeIndicator(false, ImageUtil.getResourceStreamFromClass(getClass(), "buffed.png"), this, config));
 
 		for (final Skill skill : Skill.values())
 		{
@@ -180,7 +175,7 @@ public class BoostsPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onBoostedLevelChange(BoostedLevelChanged boostedLevelChanged)
+	public void onBoostedLevelChanged(BoostedLevelChanged boostedLevelChanged)
 	{
 		Skill skill = boostedLevelChanged.getSkill();
 

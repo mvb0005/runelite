@@ -34,6 +34,7 @@ import net.runelite.api.annotations.VisibleForDevtools;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.hooks.Callbacks;
+import net.runelite.api.hooks.DrawCallbacks;
 import net.runelite.api.vars.AccountType;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetInfo;
@@ -46,14 +47,16 @@ public interface Client extends GameEngine
 {
 	/**
 	 * The client invokes these callbacks to communicate to
-	 * @return
 	 */
 	Callbacks getCallbacks();
+
+	DrawCallbacks getDrawCallbacks();
+
+	void setDrawCallbacks(DrawCallbacks drawCallbacks);
 
 	/**
 	 * Retrieve a global logger for the client.
 	 * This is most useful for mixins which can't have their own.
-	 * @return
 	 */
 	Logger getLogger();
 
@@ -102,6 +105,13 @@ public interface Client extends GameEngine
 	int getRealSkillLevel(Skill skill);
 
 	/**
+	 * Calculates the total level from real skill levels.
+	 *
+	 * @return the total level
+	 */
+	int getTotalLevel();
+
+	/**
 	 * Adds a new chat message to the chatbox.
 	 *
 	 * @param type the type of message
@@ -131,6 +141,20 @@ public interface Client extends GameEngine
 	 * @param name the logged in username
 	 */
 	void setUsername(String name);
+
+	/**
+	 * Sets the password on login screen.
+	 *
+	 * @param password the login screen password
+	 */
+	void setPassword(String password);
+
+	/**
+	 * Gets currently selected login field. 0 is username, and 1 is password.
+	 *
+	 * @return currently selected login field
+	 */
+	int getCurrentLoginField();
 
 	/**
 	 * Gets the account type of the logged in player.
@@ -202,6 +226,18 @@ public interface Client extends GameEngine
 	 * @return the logged in world number
 	 */
 	int getWorld();
+
+	/**
+	 * Gets the canvas height
+	 * @return
+	 */
+	int getCanvasHeight();
+
+	/**
+	 * Gets the canvas width
+	 * @return
+	 */
+	int getCanvasWidth();
 
 	/**
 	 * Gets the height of the viewport.
@@ -311,21 +347,24 @@ public interface Client extends GameEngine
 	SpritePixels createItemSprite(int itemId, int quantity, int border, int shadowColor, int stackable, boolean noted, int scale);
 
 	/**
-	 * Loads and creates the sprite image of the passed archive and file IDs.
+	 * Loads and creates the sprite images of the passed archive and file IDs.
 	 *
-	 * @param source the sprite database
+	 * @param source the sprite index
 	 * @param archiveId the sprites archive ID
 	 * @param fileId the sprites file ID
 	 * @return the sprite image of the file
 	 */
-	SpritePixels getSprite(IndexDataBase source, int archiveId, int fileId);
+	SpritePixels[] getSprites(IndexDataBase source, int archiveId, int fileId);
 
 	/**
-	 * Gets the sprite index database.
-	 *
-	 * @return the sprite database
+	 * Gets the sprite index.
 	 */
 	IndexDataBase getIndexSprites();
+
+	/**
+	 * Gets the script index.
+	 */
+	IndexDataBase getIndexScripts();
 
 	/**
 	 * Returns the x-axis base coordinate.
@@ -353,6 +392,23 @@ public interface Client extends GameEngine
 	 * @return the pressed mouse button
 	 */
 	int getMouseCurrentButton();
+
+	/**
+	 * Schedules checking of current region tile for next frame, so ${@link Client#getSelectedSceneTile()} ()} will
+	 * return actual value.
+	 *
+	 * @param checkClick when true next frame selected region tile will be updated
+	 */
+	void setCheckClick(boolean checkClick);
+
+	/**
+	 * Sets current mouse hover position. This value is automatically updated only when right-clicking in game.
+	 * Setting this value together with ${@link Client#setCheckClick(boolean)} will update ${@link Client#getSelectedSceneTile()} ()}
+	 * for next frame.
+	 *
+	 * @param position current mouse hover position
+	 */
+	void setMouseCanvasHoverPosition(Point position);
 
 	/**
 	 * Gets the currently selected tile (ie. last right clicked tile).
@@ -443,6 +499,13 @@ public interface Client extends GameEngine
 	int getEnergy();
 
 	/**
+	 * Gets the current weight of the logged in player.
+	 *
+	 * @return the weight
+	 */
+	int getWeight();
+
+	/**
 	 * Gets an array of options that can currently be used on other players.
 	 * <p>
 	 * For example, if the player is in a PVP area the "Attack" option
@@ -485,8 +548,7 @@ public interface Client extends GameEngine
 	 * Sets the array of open menu entries.
 	 * <p>
 	 * This method should typically be used in the context of the {@link net.runelite.api.events.MenuOpened}
-	 * event, since setting the menu entries will be overwritten the next
-	 * time the menu entries are calculated.
+	 * event, since setting the menu entries will be overwritten the next frame
 	 *
 	 * @param entries new array of open menu entries
 	 */
@@ -534,22 +596,15 @@ public interface Client extends GameEngine
 	 * plane, x and y the x-axis and y-axis coordinates of a tile
 	 * divided by the size of a chunk.
 	 * <p>
-	 * The bits of the int value held by the coordinates are structured
-	 * with the following format:
-	 * <ul>
-	 *     <li>Bits 7 and 8 correspond to the plane</li>
-	 *     <li>Bits 9 to 18 correspond to the x-axis coordinate of the chunk</li>
-	 *     <li>Bits 19 to 29 correspond to the y-axis coordinate of the chunk</li>
-	 *     <li>Bits 30 and 31 correspond to the chunks rotation</li>
-	 * </ul>
-	 * Note: The above positions assume that the left-most bit of an integer
-	 * is bit position 1, and the right-most bit 32.
-	 * ie.
-	 * 0000 0000 0000 0000 0000 0000 0000 0000
-	 *        PP XXXX XXXX XXYY YYYY YYYY YRR
-	 * Where P is the plane, X and Y the x/y axis coordinates, and R the chunks
-	 * rotation.
-	 *
+	 * The bits of the int value held by the coordinates are -1 if there is no data,
+	 * structured in the following format:
+	 * <pre>{@code
+	 *  0                   1                   2                   3
+	 *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+	 * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	 * | |rot|     y chunk coord     |    x chunk coord    |pln|       |
+	 * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	 * }</pre>
 	 * @return the array of instance template chunks
 	 * @see Constants#CHUNK_SIZE
 	 * @see InstanceTemplates
@@ -627,12 +682,14 @@ public interface Client extends GameEngine
 	String getVar(VarClientStr varClientStr);
 
 	/**
-	 * Sets the given variable
-	 *
-	 * @param varClientStr
-	 * @param value
+	 * Sets a VarClientString to the passed value
 	 */
 	void setVar(VarClientStr varClientStr, String value);
+
+	/**
+	 * Sets a VarClientInt to the passed value
+	 */
+	void setVar(VarClientInt varClientStr, int value);
 
 	/**
 	 * Sets the value of a given variable.
@@ -750,6 +807,13 @@ public interface Client extends GameEngine
 	 * @return the chat buffers
 	 */
 	Map<Integer, ChatLineBuffer> getChatLineMap();
+
+	/**
+	 * Map of message node id to message node
+	 *
+	 * @return the map
+	 */
+	IterableHashTable getMessages();
 
 	/**
 	 * Gets the viewport widget.
@@ -900,16 +964,24 @@ public interface Client extends GameEngine
 	BufferProvider getBufferProvider();
 
 	/**
-	 * Gets the amount of ticks since the last mouse movement occurred.
+	 * Gets the amount of client ticks since the last mouse movement occurred.
 	 *
 	 * @return amount of idle mouse ticks
+	 * @see Constants#CLIENT_TICK_LENGTH
 	 */
 	int getMouseIdleTicks();
 
 	/**
-	 * Gets the amount of ticks since the last keyboard press occurred.
+	 * Gets the time at which the last mouse press occurred in milliseconds since
+	 * the UNIX epoch.
+	 */
+	long getMouseLastPressedMillis();
+
+	/**
+	 * Gets the amount of client ticks since the last keyboard press occurred.
 	 *
 	 * @return amount of idle keyboard ticks
+	 * @see Constants#CLIENT_TICK_LENGTH
 	 */
 	int getKeyboardIdleTicks();
 
@@ -931,48 +1003,32 @@ public interface Client extends GameEngine
 	ItemContainer getItemContainer(InventoryID inventory);
 
 	/**
-	 * Gets the index of the last integer added to the
-	 * {@link #getIntStack()} array.
-	 *
-	 * @return the array index
+	 * Gets the length of the cs2 vm's int stack
 	 */
 	int getIntStackSize();
 
 	/**
-	 * Sets the index of the last integer added to the
-	 * {@link #getIntStack()} array.
-	 *
-	 * @param stackSize the array index
+	 * Sets the length of the cs2 vm's int stack
 	 */
 	void setIntStackSize(int stackSize);
 
 	/**
-	 * Gets the integer stack
-	 *
-	 * @return the array
+	 * Gets the cs2 vm's int stack
 	 */
 	int[] getIntStack();
 
 	/**
-	 * Gets the index of the last string added to the
-	 * {@link #getStringStack()} array.
-	 *
-	 * @return the array index
+	 * Gets the length of the cs2 vm's string stack
 	 */
 	int getStringStackSize();
 
 	/**
-	 * Sets the index of the last string added to the
-	 * {@link #getStringStack()} array.
-	 *
-	 * @param stackSize the array index
+	 * Sets the length of the cs2 vm's string stack
 	 */
 	void setStringStackSize(int stackSize);
 
 	/**
-	 * Gets the string stack
-	 *
-	 * @return the string stack
+	 * Gets the cs2 vm's string stack
 	 */
 	String[] getStringStack();
 
@@ -1007,6 +1063,27 @@ public interface Client extends GameEngine
 	Friend[] getFriends();
 
 	/**
+	 * Gets the number of friends on the friends list.
+	 *
+	 * @return
+	 */
+	int getFriendsCount();
+
+	/**
+	 * Gets an array of players on the ignore list.
+	 *
+	 * @return
+	 */
+	Ignore[] getIgnores();
+
+	/**
+	 * Gets the number of ignored players on the ignore list.
+	 *
+	 * @return
+	 */
+	int getIgnoreCount();
+
+	/**
 	 * Checks whether a player is in the same clan chat.
 	 *
 	 * @param name the name of the player
@@ -1037,9 +1114,9 @@ public interface Client extends GameEngine
 	RenderOverview getRenderOverview();
 
 	/**
-	 * Checked whether the client is in stretched mode.
+	 * Checks whether the client is in stretched mode.
 	 *
-	 * @return true if the client is in stretched, false otherwise
+	 * @return true if the client is in stretched mode, false otherwise
 	 */
 	boolean isStretchedEnabled();
 
@@ -1051,16 +1128,16 @@ public interface Client extends GameEngine
 	void setStretchedEnabled(boolean state);
 
 	/**
-	 * Checks whether the client is using fast rendering techniques when
-	 * stretching the client in fixed mode.
+	 * Checks whether the client is using fast
+	 * rendering techniques when stretching the canvas.
 	 *
-	 * @return true if client is fast rendering, false otherwise
+	 * @return true if stretching is fast rendering, false otherwise
 	 */
 	boolean isStretchedFast();
 
 	/**
-	 * Sets whether to use fast rendering techniques when in stretch
-	 * fixed mode.
+	 * Sets whether to use fast rendering techniques
+	 * when stretching the canvas.
 	 *
 	 * @param state new fast rendering state
 	 */
@@ -1068,18 +1145,35 @@ public interface Client extends GameEngine
 
 	/**
 	 * Sets whether to force integer scale factor by rounding scale
-	 * factors towards {@code zero} when stretching fixed mode.
+	 * factors towards {@code zero} when stretching.
 	 *
 	 * @param state new integer scaling state
 	*/
 	void setStretchedIntegerScaling(boolean state);
 
 	/**
-	 * Sets whether to keep aspect ratio when stretching fixed mode.
+	 * Sets whether to keep aspect ratio when stretching.
 	 *
 	 * @param state new keep aspect ratio state
 	 */
 	void setStretchedKeepAspectRatio(boolean state);
+
+	/**
+	 * Sets the scaling factor when scaling resizable mode.
+	 *
+	 * @param factor new scaling factor
+	 */
+	void setScalingFactor(int factor);
+
+	/**
+	 * Invalidates cached dimensions that are
+	 * used for stretching and scaling.
+	 *
+	 * @param resize true to tell the game to
+	 *               resize the canvas on the next frame,
+	 *               false otherwise.
+	 */
+	void invalidateStretching(boolean resize);
 
 	/**
 	 * Gets the current stretched dimensions of the client.
@@ -1107,8 +1201,6 @@ public interface Client extends GameEngine
 
 	/**
 	 * Creates a new instance of a world.
-	 *
-	 * @return the created world
 	 */
 	World createWorld();
 
@@ -1121,7 +1213,9 @@ public interface Client extends GameEngine
 	SpritePixels drawInstanceMap(int z);
 
 	/**
-	 * Runs a RuneLite script.
+	 * Executes a client script from the cache
+	 *
+	 * This method must be ran on the client thread and is not reentrant
 	 *
 	 * @param id the script ID
 	 * @param args additional arguments to execute the script with
@@ -1342,34 +1436,23 @@ public interface Client extends GameEngine
 	@VisibleForDevtools
 	int[] getSkillExperiences();
 
-	@VisibleForDevtools
-	int[] getChangedSkills();
-
-	@VisibleForDevtools
-	int getChangedSkillsCount();
-
-	@VisibleForDevtools
-	void setChangedSkillsCount(int i);
+	void queueChangedSkill(Skill skill);
 
 	/**
-	 * Sets a mapping of sprites to override.
+	 * Gets a mapping of sprites to override.
 	 * <p>
 	 * The key value in the map corresponds to the ID of the sprite,
 	 * and the value the sprite to replace it with.
-	 *
-	 * @param overrides the sprites to override
 	 */
-	void setSpriteOverrides(Map<Integer, SpritePixels> overrides);
+	Map<Integer, SpritePixels> getSpriteOverrides();
 
 	/**
-	 * Sets a mapping of widget sprites to override.
+	 * Gets a mapping of widget sprites to override.
 	 * <p>
 	 * The key value in the map corresponds to the packed widget ID,
 	 * and the value the sprite to replace the widgets sprite with.
-	 *
-	 * @param overrides the sprites to override
 	 */
-	void setWidgetSpriteOverrides(Map<Integer, SpritePixels> overrides);
+	Map<Integer, SpritePixels> getWidgetSpriteOverrides();
 
 	/**
 	 * Sets the compass sprite.
@@ -1377,6 +1460,13 @@ public interface Client extends GameEngine
 	 * @param spritePixels the new sprite
 	 */
 	void setCompass(SpritePixels spritePixels);
+
+	/**
+	 * Returns widget sprite cache, to be used with {@link Client#getSpriteOverrides()}
+	 *
+	 * @return the cache
+	 */
+	NodeCache getWidgetSpriteCache();
 
 	/**
 	 * Gets the current server tick count.
@@ -1407,6 +1497,11 @@ public interface Client extends GameEngine
 	EnumSet<WorldType> getWorldType();
 
 	/**
+	 * Gets the enabled state for the Oculus orb mode
+	 */
+	int getOculusOrbState();
+
+	/**
 	 * Sets the enabled state for the Oculus orb state
 	 *
 	 * @param state boolean enabled value
@@ -1415,8 +1510,42 @@ public interface Client extends GameEngine
 
 	/**
 	 * Sets the normal moving speed when using oculus orb (default value is 12)
-	 *
-	 * @param speed speed
 	 */
 	void setOculusOrbNormalSpeed(int speed);
+
+	/**
+	 * Opens in-game world hopper interface
+	 */
+	void openWorldHopper();
+
+	/**
+	 * Hops using in-game world hopper widget to another world
+	 * @param world target world to hop to
+	 */
+	void hopToWorld(World world);
+
+	boolean isGpu();
+
+	void setGpu(boolean gpu);
+
+	int get3dZoom();
+	int getCenterX();
+	int getCenterY();
+
+	int getCameraX2();
+	int getCameraY2();
+	int getCameraZ2();
+
+	TextureProvider getTextureProvider();
+
+	NodeCache getCachedModels2();
+
+	void setRenderArea(boolean[][] renderArea);
+
+	int getRasterizer3D_clipMidX2();
+	int getRasterizer3D_clipNegativeMidX();
+	int getRasterizer3D_clipNegativeMidY();
+	int getRasterizer3D_clipMidY2();
+
+	void checkClickbox(Model model, int orientation, int pitchSin, int pitchCos, int yawSin, int yawCos, int x, int y, int z, long hash);
 }

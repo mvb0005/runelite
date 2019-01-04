@@ -27,8 +27,6 @@ package net.runelite.client.plugins;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
-import com.google.common.eventbus.EventBus;
-import com.google.common.eventbus.Subscribe;
 import com.google.common.graph.Graph;
 import com.google.common.graph.GraphBuilder;
 import com.google.common.graph.Graphs;
@@ -54,6 +52,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Named;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 import javax.swing.SwingUtilities;
 import lombok.Setter;
@@ -65,11 +64,13 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.RuneLiteConfig;
+import net.runelite.client.eventbus.EventBus;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.PluginChanged;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.task.ScheduledMethod;
 import net.runelite.client.task.Scheduler;
-import net.runelite.client.util.SceneTileManager;
+import net.runelite.client.util.GameEventManager;
 
 @Singleton
 @Slf4j
@@ -85,7 +86,7 @@ public class PluginManager
 	private final Scheduler scheduler;
 	private final ConfigManager configManager;
 	private final ScheduledExecutorService executor;
-	private final SceneTileManager sceneTileManager;
+	private final Provider<GameEventManager> sceneTileManager;
 	private final List<Plugin> plugins = new CopyOnWriteArrayList<>();
 	private final List<Plugin> activePlugins = new CopyOnWriteArrayList<>();
 	private final String runeliteGroupName = RuneLiteConfig.class
@@ -102,7 +103,7 @@ public class PluginManager
 		final Scheduler scheduler,
 		final ConfigManager configManager,
 		final ScheduledExecutorService executor,
-		final SceneTileManager sceneTileManager)
+		final Provider<GameEventManager> sceneTileManager)
 	{
 		this.developerMode = developerMode;
 		this.eventBus = eventBus;
@@ -323,12 +324,20 @@ public class PluginManager
 			});
 
 			log.debug("Plugin {} is now running", plugin.getClass().getSimpleName());
-			sceneTileManager.simulateObjectSpawns(plugin);
+			if (!isOutdated && sceneTileManager != null)
+			{
+				final GameEventManager gameEventManager = this.sceneTileManager.get();
+				if (gameEventManager != null)
+				{
+					gameEventManager.simulateGameEvents(plugin);
+				}
+			}
+
 			eventBus.register(plugin);
 			schedule(plugin);
 			eventBus.post(new PluginChanged(plugin, true));
 		}
-		catch (InterruptedException | InvocationTargetException ex)
+		catch (InterruptedException | InvocationTargetException | IllegalArgumentException ex)
 		{
 			throw new PluginInstantiationException(ex);
 		}

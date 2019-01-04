@@ -29,11 +29,11 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
-import com.google.common.eventbus.Subscribe;
 import com.google.inject.Provides;
 import java.awt.Color;
 import java.awt.Rectangle;
 import static java.lang.Boolean.TRUE;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,7 +45,6 @@ import javax.inject.Inject;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
@@ -55,8 +54,10 @@ import net.runelite.api.ItemLayer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Node;
+import net.runelite.api.Player;
 import net.runelite.api.Scene;
 import net.runelite.api.Tile;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ConfigChanged;
 import net.runelite.api.events.FocusChanged;
 import net.runelite.api.events.GameStateChanged;
@@ -64,8 +65,13 @@ import net.runelite.api.events.ItemDespawned;
 import net.runelite.api.events.ItemQuantityChanged;
 import net.runelite.api.events.ItemSpawned;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.client.Notifier;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.NpcLootReceived;
+import net.runelite.client.events.PlayerLootReceived;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.game.ItemStack;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
@@ -76,14 +82,14 @@ import static net.runelite.client.plugins.grounditems.config.MenuHighlightMode.B
 import static net.runelite.client.plugins.grounditems.config.MenuHighlightMode.NAME;
 import static net.runelite.client.plugins.grounditems.config.MenuHighlightMode.OPTION;
 import net.runelite.client.ui.overlay.OverlayManager;
-import net.runelite.http.api.item.ItemPrice;
+import net.runelite.client.util.ColorUtil;
+import net.runelite.client.util.StackFormatter;
 
 @PluginDescriptor(
 	name = "Ground Items",
 	description = "Highlight ground items and/or show price information",
 	tags = {"grand", "exchange", "high", "alchemy", "prices", "highlight", "overlay"}
 )
-@Slf4j
 public class GroundItemsPlugin extends Plugin
 {
 	private static final Splitter COMMA_SPLITTER = Splitter
@@ -113,6 +119,10 @@ public class GroundItemsPlugin extends Plugin
 	@Setter(AccessLevel.PACKAGE)
 	private boolean hotKeyPressed;
 
+	@Getter(AccessLevel.PACKAGE)
+	@Setter(AccessLevel.PACKAGE)
+	private boolean hideAll;
+
 	private List<String> hiddenItemList = new CopyOnWriteArrayList<>();
 	private List<String> highlightedItemsList = new CopyOnWriteArrayList<>();
 
@@ -139,6 +149,9 @@ public class GroundItemsPlugin extends Plugin
 
 	@Inject
 	private GroundItemsOverlay overlay;
+
+	@Inject
+	private Notifier notifier;
 
 	@Getter
 	private final Map<GroundItem.GroundItemKey, GroundItem> collectedGroundItems = new LinkedHashMap<>();
@@ -208,6 +221,13 @@ public class GroundItemsPlugin extends Plugin
 		{
 			existing.setQuantity(existing.getQuantity() + groundItem.getQuantity());
 		}
+
+		boolean isHighlighted = config.highlightedColor().equals(getHighlighted(groundItem.getName(),
+				groundItem.getGePrice(), groundItem.getHaPrice()));
+		if (config.notifyHighlightedDrops() && isHighlighted)
+		{
+			notifyHighlightedItem(groundItem);
+		}
 	}
 
 	@Subscribe
@@ -250,6 +270,34 @@ public class GroundItemsPlugin extends Plugin
 		}
 	}
 
+	@Subscribe
+	public void onNpcLootReceived(NpcLootReceived npcLootReceived)
+	{
+		Collection<ItemStack> items = npcLootReceived.getItems();
+		lootReceived(items);
+	}
+
+	@Subscribe
+	public void onPlayerLootReceived(PlayerLootReceived playerLootReceived)
+	{
+		Collection<ItemStack> items = playerLootReceived.getItems();
+		lootReceived(items);
+	}
+
+	private void lootReceived(Collection<ItemStack> items)
+	{
+		for (ItemStack itemStack : items)
+		{
+			WorldPoint location = WorldPoint.fromLocal(client, itemStack.getLocation());
+			GroundItem.GroundItemKey groundItemKey = new GroundItem.GroundItemKey(itemStack.getId(), location);
+			GroundItem groundItem = collectedGroundItems.get(groundItemKey);
+			if (groundItem != null)
+			{
+				groundItem.setMine(true);
+			}
+		}
+	}
+
 	private GroundItem buildGroundItem(final Tile tile, final Item item)
 	{
 		// Collect the data for the item
@@ -265,6 +313,7 @@ public class GroundItemsPlugin extends Plugin
 			.quantity(item.getQuantity())
 			.name(itemComposition.getName())
 			.haPrice(alchPrice)
+			.height(tile.getItemLayer().getHeight())
 			.tradeable(itemComposition.isTradeable())
 			.build();
 
@@ -277,11 +326,7 @@ public class GroundItemsPlugin extends Plugin
 		}
 		else
 		{
-			final ItemPrice itemPrice = itemManager.getItemPrice(realItemId);
-			if (itemPrice != null)
-			{
-				groundItem.setGePrice(itemPrice.getPrice());
-			}
+			groundItem.setGePrice(itemManager.getItemPrice(realItemId));
 		}
 
 		return groundItem;
@@ -369,8 +414,8 @@ public class GroundItemsPlugin extends Plugin
 
 			final ItemComposition itemComposition = itemManager.getItemComposition(itemId);
 			final int realItemId = itemComposition.getNote() != -1 ? itemComposition.getLinkedNoteId() : itemComposition.getId();
-			final ItemPrice itemPrice = itemManager.getItemPrice(realItemId);
-			final int price = itemPrice == null ? itemComposition.getPrice() : itemPrice.getPrice();
+			final int itemPrice = itemManager.getItemPrice(realItemId);
+			final int price = itemPrice <= 0 ? itemComposition.getPrice() : itemPrice;
 			final int haPrice = Math.round(itemComposition.getPrice() * HIGH_ALCHEMY_CONSTANT) * quantity;
 			final int gePrice = quantity * price;
 			final Color hidden = getHidden(itemComposition.getName(), gePrice, haPrice, itemComposition.isTradeable());
@@ -380,19 +425,17 @@ public class GroundItemsPlugin extends Plugin
 
 			if (color != null && canBeRecolored && !color.equals(config.defaultColor()))
 			{
-				String hexColor = Integer.toHexString(color.getRGB() & 0xFFFFFF);
-				String colTag = "<col=" + hexColor + ">";
 				final MenuHighlightMode mode = config.menuHighlightMode();
 
 				if (mode == BOTH || mode == OPTION)
 				{
-					lastEntry.setOption(colTag + "Take");
+					lastEntry.setOption(ColorUtil.prependColorTag("Take", color));
 				}
 
 				if (mode == BOTH || mode == NAME)
 				{
 					String target = lastEntry.getTarget().substring(lastEntry.getTarget().indexOf(">") + 1);
-					lastEntry.setTarget(colTag + target);
+					lastEntry.setTarget(ColorUtil.prependColorTag(target, color));
 				}
 			}
 
@@ -490,5 +533,35 @@ public class GroundItemsPlugin extends Plugin
 		{
 			setHotKeyPressed(false);
 		}
+	}
+
+	private void notifyHighlightedItem(GroundItem item)
+	{
+		final Player local = client.getLocalPlayer();
+		final StringBuilder notificationStringBuilder = new StringBuilder()
+			.append("[")
+			.append(local.getName())
+			.append("] received a highlighted drop: ")
+			.append(item.getName());
+
+		if (item.getQuantity() > 1)
+		{
+			notificationStringBuilder.append(" x ").append(item.getQuantity());
+
+
+			if (item.getQuantity() > (int) Character.MAX_VALUE)
+			{
+				notificationStringBuilder.append(" (Lots!)");
+			}
+			else
+			{
+				notificationStringBuilder.append(" (")
+					.append(StackFormatter.quantityToStackSize(item.getQuantity()))
+					.append(")");
+			}
+		}
+
+		notificationStringBuilder.append("!");
+		notifier.notify(notificationStringBuilder.toString());
 	}
 }

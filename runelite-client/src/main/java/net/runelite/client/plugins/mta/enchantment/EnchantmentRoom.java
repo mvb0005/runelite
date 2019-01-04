@@ -24,7 +24,6 @@
  */
 package net.runelite.client.plugins.mta.enchantment;
 
-import com.google.common.eventbus.Subscribe;
 import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
@@ -40,6 +39,7 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemDespawned;
 import net.runelite.api.events.ItemSpawned;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.mta.MTAConfig;
 import net.runelite.client.plugins.mta.MTARoom;
 
@@ -79,6 +79,10 @@ public class EnchantmentRoom extends MTARoom
 		if (nearest != null)
 		{
 			client.setHintArrow(nearest);
+		}
+		else
+		{
+			client.clearHintArrow();
 		}
 	}
 
